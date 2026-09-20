@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "releaseTag": "lld-v24.0.0-win-arm64.1",
+  "assetName": "wasm-ld-24.0.0-win-arm64.1.zip",
+  "llvmLld": {
+    "version": "24.0.0",
+    "commit": "4cc02503f584aad493a1d0d35bb5afb710a5510b"
+  },
+  "hostArtifacts": {
+    "winArm64LldCMakeFlags": [
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
+      "-DLLVM_ENABLE_PROJECTS=lld",
+      "-DLLVM_TARGETS_TO_BUILD=WebAssembly",
+      "-DLLVM_INCLUDE_TESTS=OFF",
+      "-DLLVM_INCLUDE_EXAMPLES=OFF",
+      "-DLLVM_INCLUDE_BENCHMARKS=OFF",
+      "-DLLVM_ENABLE_ASSERTIONS=OFF",
+      "-DLLVM_ENABLE_LIBXML2=OFF",
+      "-DLLVM_ENABLE_ZSTD=OFF",
+      "-DLLVM_ENABLE_ZLIB=OFF",
+      "-DLLVM_ENABLE_TERMINFO=OFF",
+      "-DLLVM_BUILD_LLVM_DYLIB=OFF",
+      "-DLLVM_LINK_LLVM_DYLIB=OFF",
+      "-DBUILD_SHARED_LIBS=OFF",
+      "-DLLVM_PARALLEL_LINK_JOBS=1"
+    ],
+    "hosts": {
+      "win-arm64": {
+        "llvmSource": {
+          "url": "https://codeload.github.com/llvm/llvm-project/tar.gz/4cc02503f584aad493a1d0d35bb5afb710a5510b",
+          "treeSha256": "2c33ef59dad998b421e65809d0d6c148d72116a57b963d37c8730a532b4e2645"
+        }
+      }
+    },
+    "licenseSources": {
+      "llvm": {
+        "url": "https://raw.githubusercontent.com/llvm/llvm-project/4cc02503f584aad493a1d0d35bb5afb710a5510b/llvm/LICENSE.TXT",
+        "sha256": "8d85c1057d742e597985c7d4e6320b015a9139385cff4cbae06ffc0ebe89afee"
+      }
+    }
+  }
+}

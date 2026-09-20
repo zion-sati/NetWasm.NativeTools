@@ -1,0 +1,123 @@
+name: Release Windows ARM64 wasm-ld
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-arm64-wasm-ld-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-11-vs2026-arm
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out signed release recipe
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - name: Install Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+      - name: Read versioned release identity
+        id: release
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          pins = json.loads(Path('eng/toolchain.json').read_text())
+          print(f"tag={pins['releaseTag']}")
+          print(f"asset={pins['assetName']}")
+          print(f"title=Windows ARM64 wasm-ld {pins['llvmLld']['version']}")
+          PY
+      - name: Verify release identity is unused
+        shell: bash
+        run: |
+          if gh release view "${{ steps.release.outputs.tag }}" >/dev/null 2>&1 ||
+             [[ -n "$(git ls-remote --tags origin "refs/tags/${{ steps.release.outputs.tag }}")" ]]; then
+            echo 'This tag or release already exists; bump the build revision.' >&2
+            exit 1
+          fi
+      - name: Build native Windows ARM64 wasm-ld from pinned LLVM source
+        shell: bash
+        run: |
+          python eng/build-windows-arm64-lld.py \
+            --output "$RUNNER_TEMP/wasm-ld.exe" \
+            --receipt "$RUNNER_TEMP/build-receipt.json" \
+            --cache "$RUNNER_TEMP/native-inputs"
+      - name: Verify and package release asset
+        shell: bash
+        run: |
+          python eng/package-release.py \
+            --binary "$RUNNER_TEMP/wasm-ld.exe" \
+            --receipt "$RUNNER_TEMP/build-receipt.json" \
+            --output "$RUNNER_TEMP/release"
+      - name: Retain candidate evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-arm64-wasm-ld-candidate
+          path: ${{ runner.temp }}/release/*
+          if-no-files-found: error
+          retention-days: 7
+      - name: Write release notes
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          pins = json.loads(Path('eng/toolchain.json').read_text())
+          receipt = json.loads(Path(os.environ['RUNNER_TEMP'], 'build-receipt.json').read_text())
+          Path(os.environ['RUNNER_TEMP'], 'release-notes.md').write_text(
+              f"Native Windows ARM64 wasm-ld {pins['llvmLld']['version']} built from "
+              f"LLVM `{receipt['llvmCommit']}`.\n\n"
+              f"The release archive contains the executable, LLVM license, and "
+              f"a path-free build receipt with the source tree, toolchain, and "
+              f"output SHA-256. The separate `SHA256SUMS` asset binds the archive.\n\n"
+              f"Builder source: `{receipt['sourceCommit']}`. "
+              "Use the exact versioned asset and verify its SHA-256; do not use latest.\n",
+              encoding='utf-8')
+          PY
+      - name: Create draft release with verified assets
+        shell: bash
+        run: |
+          gh release create "${{ steps.release.outputs.tag }}" \
+            "$RUNNER_TEMP/release/${{ steps.release.outputs.asset }}" \
+            "$RUNNER_TEMP/release/SHA256SUMS" \
+            --repo "$GITHUB_REPOSITORY" --draft \
+            --target "$GITHUB_SHA" \
+            --title "${{ steps.release.outputs.title }}" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
+      - name: Verify uploaded asset before publishing
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/published"
+          gh release download "${{ steps.release.outputs.tag }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "${{ steps.release.outputs.asset }}" \
+            --dir "$RUNNER_TEMP/published"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ['RUNNER_TEMP'])
+          pins = json.loads(Path('eng/toolchain.json').read_text())
+          asset = root / 'published' / pins['assetName']
+          expected = (root / 'release' / 'SHA256SUMS').read_text().split()[0]
+          actual = hashlib.sha256(asset.read_bytes()).hexdigest()
+          if actual != expected:
+              raise SystemExit('Uploaded release asset SHA-256 mismatch.')
+          PY
+          gh release edit "${{ steps.release.outputs.tag }}" \
+            --repo "$GITHUB_REPOSITORY" --draft=false
