@@ -21,7 +21,13 @@ RECEIPT_FIELDS = {
     "cmakeFlags", "compilerVersion", "windowsSdkVersion", "cmakeVersion",
     "ninjaVersion",
 }
-ARCHIVE_FILES = ("wasm-ld.exe", "build-receipt.json", "LLVM-LICENSE.txt")
+NOTICE_SOURCES = {
+    "LLVM-LICENSE.txt": "llvm",
+    "LLD-LICENSE.txt": "lld",
+    "LLVM-BLAKE3-LICENSE": "blake3",
+}
+THIRD_PARTY_NOTICE = "LLVM-ThirdParty-NOTICES.txt"
+ARCHIVE_FILES = ("wasm-ld.exe", "build-receipt.json", *NOTICE_SOURCES, THIRD_PARTY_NOTICE)
 HEX_64 = re.compile(r"[0-9a-f]{64}\Z")
 HEX_40 = re.compile(r"[0-9a-f]{40}\Z")
 
@@ -80,24 +86,45 @@ def validate_receipt(receipt: dict[str, object], binary: bytes,
             raise ValueError(f"Invalid path-free tool version: {field}.")
 
 
-def get_license(config: dict[str, object]) -> bytes:
-    source = config["hostArtifacts"]["licenseSources"]["llvm"]
+def get_pinned_source(source: dict[str, object]) -> bytes:
     request = urllib.request.Request(source["url"], headers={"User-Agent": "NetWasm-NativeTools"})
     with urllib.request.urlopen(request, timeout=120) as response:
         data = response.read()
     if sha256(data) != source["sha256"]:
-        raise ValueError("Pinned LLVM license digest mismatch.")
+        raise ValueError("Pinned upstream notice digest mismatch.")
     return data
 
 
-def archive_bytes(binary: bytes, receipt: dict[str, object], license_bytes: bytes) -> bytes:
+def get_release_notices(config: dict[str, object]) -> dict[str, bytes]:
+    sources = config["hostArtifacts"]["licenseSources"]
+    notices = {name: get_pinned_source(sources[key]) for name, key in NOTICE_SOURCES.items()}
+    sections = []
+    for source in sources["llvmThirdParty"]:
+        blocks = re.findall(r"/\*.*?\*/", get_pinned_source(source).decode("utf-8"), re.DOTALL)
+        index = int(source["noticeBlock"])
+        if index < 0 or index >= len(blocks):
+            raise ValueError(f"Missing pinned LLVM notice block: {source['path']}")
+        notice = blocks[index]
+        if not any(term in notice.lower() for term in
+                   ("copyright", "license", "permission", "public domain")):
+            raise ValueError(f"Pinned LLVM source has no notice: {source['path']}")
+        sections.append(f"===== {source['path']} =====\n{notice}\n")
+    notices[THIRD_PARTY_NOTICE] = (
+        "LLVM embedded third-party notices from the pinned source revision.\n\n" +
+        "\n".join(sections)).encode("utf-8")
+    if sha256(notices[THIRD_PARTY_NOTICE]) != sources["llvmThirdPartyNoticeSha256"]:
+        raise ValueError("Pinned LLVM third-party notice digest mismatch.")
+    return notices
+
+
+def archive_bytes(binary: bytes, receipt: dict[str, object], notices: dict[str, bytes]) -> bytes:
     from io import BytesIO
 
     stream = BytesIO()
     files = {
         "wasm-ld.exe": binary,
         "build-receipt.json": (json.dumps(receipt, sort_keys=True, indent=2) + "\n").encode(),
-        "LLVM-LICENSE.txt": license_bytes,
+        **notices,
     }
     with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for name in ARCHIVE_FILES:
@@ -119,10 +146,14 @@ def verify_archive(data: bytes, config: dict[str, object], source_commit: str) -
             raise ValueError("Release archive inventory or ZIP integrity is invalid.")
         binary = archive.read("wasm-ld.exe")
         receipt = json.loads(archive.read("build-receipt.json"))
-        license_bytes = archive.read("LLVM-LICENSE.txt")
+        notices = {name: archive.read(name) for name in (*NOTICE_SOURCES, THIRD_PARTY_NOTICE)}
     validate_receipt(receipt, binary, config, source_commit)
-    if sha256(license_bytes) != config["hostArtifacts"]["licenseSources"]["llvm"]["sha256"]:
-        raise ValueError("Release archive LLVM license digest mismatch.")
+    sources = config["hostArtifacts"]["licenseSources"]
+    for name, key in NOTICE_SOURCES.items():
+        if sha256(notices[name]) != sources[key]["sha256"]:
+            raise ValueError(f"Release archive {name} digest mismatch.")
+    if sha256(notices[THIRD_PARTY_NOTICE]) != sources["llvmThirdPartyNoticeSha256"]:
+        raise ValueError("Release archive LLVM third-party notice digest mismatch.")
     return receipt
 
 
@@ -142,7 +173,7 @@ def main() -> int:
         [str(args.binary), "--version"], text=True, errors="replace").strip()
     if config["llvmLld"]["version"] not in observed_version:
         raise ValueError("wasm-ld version does not match the pin.")
-    data = archive_bytes(binary, receipt, get_license(config))
+    data = archive_bytes(binary, receipt, get_release_notices(config))
     verify_archive(data, config, source_commit)
     args.output.mkdir(parents=True, exist_ok=True)
     asset = args.output / config["assetName"]

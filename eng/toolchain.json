@@ -37,7 +37,66 @@
       "llvm": {
         "url": "https://raw.githubusercontent.com/llvm/llvm-project/4cc02503f584aad493a1d0d35bb5afb710a5510b/llvm/LICENSE.TXT",
         "sha256": "8d85c1057d742e597985c7d4e6320b015a9139385cff4cbae06ffc0ebe89afee"
-      }
+      },
+      "lld": {
+        "url": "https://raw.githubusercontent.com/llvm/llvm-project/4cc02503f584aad493a1d0d35bb5afb710a5510b/lld/LICENSE.TXT",
+        "sha256": "f7891568956e34643eb6a0db1462db30820d40d7266e2a78063f2fe233ece5a0"
+      },
+      "blake3": {
+        "url": "https://raw.githubusercontent.com/llvm/llvm-project/4cc02503f584aad493a1d0d35bb5afb710a5510b/llvm/lib/Support/BLAKE3/LICENSE",
+        "sha256": "6a94bedb8b707ed97f6e310d0d015ab14e0683ffa0a612b02958581b9cc9fc0e"
+      },
+      "llvmThirdParty": [
+        {
+          "path": "llvm/lib/Support/xxhash.cpp",
+          "url": "https://raw.githubusercontent.com/llvm/llvm-project/4cc02503f584aad493a1d0d35bb5afb710a5510b/llvm/lib/Support/xxhash.cpp",
+          "sha256": "699389b388a56d0caf330bb872739b2e23d51a22b7e2f758f2c11fac9936752d",
+          "noticeBlock": 0
+        },
+        {
+          "path": "llvm/include/llvm/Support/xxhash.h",
+          "url": "https://raw.githubusercontent.com/llvm/llvm-project/4cc02503f584aad493a1d0d35bb5afb710a5510b/llvm/include/llvm/Support/xxhash.h",
+          "sha256": "2a5c9e06ca8ad4cbd4d0da6ba4c135e11626bf369be1490769d7bee9499c4b4b",
+          "noticeBlock": 0
+        },
+        {
+          "path": "llvm/lib/Support/ConvertUTF.cpp",
+          "url": "https://raw.githubusercontent.com/llvm/llvm-project/4cc02503f584aad493a1d0d35bb5afb710a5510b/llvm/lib/Support/ConvertUTF.cpp",
+          "sha256": "bdbbdf159f5dda86bf70faa4be49f810a01c9e4c4f866889aedf2eec1efcd798",
+          "noticeBlock": 1
+        },
+        {
+          "path": "llvm/lib/Support/UnicodeNameToCodepointGenerated.cpp",
+          "url": "https://raw.githubusercontent.com/llvm/llvm-project/4cc02503f584aad493a1d0d35bb5afb710a5510b/llvm/lib/Support/UnicodeNameToCodepointGenerated.cpp",
+          "sha256": "36d0880990bab4f512d943df0225080c1cd68d7c5721da2f50fac7346083e48c",
+          "noticeBlock": 0
+        },
+        {
+          "path": "llvm/lib/Support/regcomp.c",
+          "url": "https://raw.githubusercontent.com/llvm/llvm-project/4cc02503f584aad493a1d0d35bb5afb710a5510b/llvm/lib/Support/regcomp.c",
+          "sha256": "7f930ec43f21e591d6d2fc814b4557d597a2146b2c64c16ae7aff255f28d9a0c",
+          "noticeBlock": 0
+        },
+        {
+          "path": "llvm/lib/Support/regex_impl.h",
+          "url": "https://raw.githubusercontent.com/llvm/llvm-project/4cc02503f584aad493a1d0d35bb5afb710a5510b/llvm/lib/Support/regex_impl.h",
+          "sha256": "90cf33f4d2c50f516b669e8d17310e94f9241eb33b3ca2098478c41dab130f52",
+          "noticeBlock": 0
+        },
+        {
+          "path": "llvm/lib/Support/regstrlcpy.c",
+          "url": "https://raw.githubusercontent.com/llvm/llvm-project/4cc02503f584aad493a1d0d35bb5afb710a5510b/llvm/lib/Support/regstrlcpy.c",
+          "sha256": "b717e3355fdca040c161a7a179de9db1c9253da6519e60b77a074cbf5f7d423f",
+          "noticeBlock": 0
+        },
+        {
+          "path": "llvm/lib/Support/MD5.cpp",
+          "url": "https://raw.githubusercontent.com/llvm/llvm-project/4cc02503f584aad493a1d0d35bb5afb710a5510b/llvm/lib/Support/MD5.cpp",
+          "sha256": "7b7e82f5508a7d5551b78a1140b1d6aa9cba87282168219743cb6377cd5f9acd",
+          "noticeBlock": 0
+        }
+      ],
+      "llvmThirdPartyNoticeSha256": "8236cea0876b2f4d9159152de5f10de91822a73c2804aa776e3b3ca8824fe1a3"
     }
   }
 }

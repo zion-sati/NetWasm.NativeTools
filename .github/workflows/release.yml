@@ -80,7 +80,8 @@ jobs:
           Path(os.environ['RUNNER_TEMP'], 'release-notes.md').write_text(
               f"Native Windows ARM64 wasm-ld {pins['llvmLld']['version']} built from "
               f"LLVM `{receipt['llvmCommit']}`.\n\n"
-              f"The release archive contains the executable, LLVM license, and "
+              f"The release archive contains the executable, LLVM/LLD licenses, "
+              f"bundled third-party notices, and "
               f"a path-free build receipt with the source tree, toolchain, and "
               f"output SHA-256. The separate `SHA256SUMS` asset binds the archive.\n\n"
               f"Builder source: `{receipt['sourceCommit']}`. "
