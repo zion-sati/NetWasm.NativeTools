@@ -83,7 +83,7 @@ class ReleaseArchiveTests(unittest.TestCase):
                 self.config, self.commit)
 
     def test_pathful_tool_version_is_rejected(self):
-        pathful = dict(self.receipt, compilerVersion="C:/Users/example")
+        pathful = dict(self.receipt, compilerVersion="C:/build/compiler.exe")
         with self.assertRaisesRegex(ValueError, "path-free"):
             MODULE.validate_receipt(pathful, self.binary, self.config, self.commit)
 
