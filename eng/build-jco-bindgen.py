@@ -208,12 +208,13 @@ def build(output: Path, receipt_path: Path, cache: Path) -> None:
 
         smoke_config = config["smokeTest"]
         smoke_root = temporary / "smoke"
+        smoke_root.mkdir()
         subprocess.run(
             [
-                "node", "packages/jco/dist/jco.js", "transpile",
-                smoke_config["fixture"], "--out-dir", str(smoke_root),
-                "--name", "smoke", "--instantiation", "async", "--strict",
-                "--bindgen-enable-wasm-exnref", "--no-wasi-shim", "--quiet",
+                "node", str(ROOT / "eng/jco-bindgen-smoke.mjs"),
+                str(source / "packages/jco/obj/js-component-bindgen-component.js"),
+                str(source / smoke_config["fixture"]),
+                str(smoke_root / "generated.js"),
             ],
             cwd=source,
             env=environment,

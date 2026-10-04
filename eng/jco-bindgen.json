@@ -23,7 +23,7 @@
     }
   },
   "smokeTest": {
-    "fixture": "packages/jco/test/fixtures/components/flavorful.component.wasm",
+    "fixture": "packages/jco-transpile/test/fixtures/components/runtime/flavorful.component.wasm",
     "requiredJavaScript": ["componentErrorInstances", "isComponentError"]
   },
   "patch": {

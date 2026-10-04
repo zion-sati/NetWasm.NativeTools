@@ -21,7 +21,8 @@ and next release identity. The
 only when started manually from `main`. It builds on GitHub's Linux runner,
 remaps the checkout and Cargo registry roots before Rust records panic
 locations, rejects user-home and build-directory paths in the resulting Wasm,
-and packages a path-free build receipt with the patch and upstream license.
+exercises that exact module against Jco's declared-error fixture, and packages
+a path-free build receipt with the patch and upstream license.
 
 The release contains
 `jco-bindgen-<Jco version>-netwasm.<patch>.<build>.zip` and `SHA256SUMS`.
