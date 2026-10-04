@@ -1,0 +1,133 @@
+name: Release patched Jco bindgen Wasm
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: jco-bindgen-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out signed release recipe
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - name: Install Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+      - name: Install pinned Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '26.7.0'
+      - name: Install pinned Rust and pnpm
+        shell: bash
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --target wasm32-wasip1
+          rustup default 1.98.1
+          npm install --global pnpm@10.17.1
+      - name: Read versioned release identity
+        id: release
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          pins = json.loads(Path('eng/jco-bindgen.json').read_text())
+          print(f"tag={pins['releaseTag']}")
+          print(f"asset={pins['assetName']}")
+          print(f"title=Patched Jco bindgen {pins['effectiveVersion']}")
+          PY
+      - name: Verify release identity is unused
+        shell: bash
+        run: |
+          if gh release view "${{ steps.release.outputs.tag }}" >/dev/null 2>&1 ||
+             [[ -n "$(git ls-remote --tags origin "refs/tags/${{ steps.release.outputs.tag }}")" ]]; then
+            echo 'This tag or release already exists; bump the build revision.' >&2
+            exit 1
+          fi
+      - name: Build patched Jco bindgen Wasm from pinned source
+        shell: bash
+        run: |
+          python eng/build-jco-bindgen.py \
+            --output "$RUNNER_TEMP/js-component-bindgen-component.core.wasm" \
+            --receipt "$RUNNER_TEMP/jco-build-receipt.json" \
+            --cache "$RUNNER_TEMP/native-inputs"
+      - name: Verify and package release asset
+        shell: bash
+        run: |
+          python eng/package-jco-bindgen-release.py \
+            --module "$RUNNER_TEMP/js-component-bindgen-component.core.wasm" \
+            --receipt "$RUNNER_TEMP/jco-build-receipt.json" \
+            --output "$RUNNER_TEMP/release"
+      - name: Retain candidate evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: jco-bindgen-candidate
+          path: ${{ runner.temp }}/release/*
+          if-no-files-found: error
+          retention-days: 7
+      - name: Write release notes
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          pins = json.loads(Path('eng/jco-bindgen.json').read_text())
+          receipt = json.loads(Path(os.environ['RUNNER_TEMP'], 'jco-build-receipt.json').read_text())
+          Path(os.environ['RUNNER_TEMP'], 'release-notes.md').write_text(
+              f"Patched Jco bindgen Wasm `{pins['effectiveVersion']}` built from "
+              f"upstream `{receipt['jcoCommit']}`.\n\n"
+              "The release archive contains the module, source patch, upstream license, "
+              "and a path-free receipt binding the source, tools, path remapping, and "
+              "output SHA-256. `SHA256SUMS` binds the archive.\n\n"
+              f"Builder source: `{receipt['sourceCommit']}`. Use the exact versioned "
+              "asset and verify its SHA-256; do not use latest.\n",
+              encoding='utf-8')
+          PY
+      - name: Create draft release with verified assets
+        shell: bash
+        run: |
+          gh release create "${{ steps.release.outputs.tag }}" \
+            "$RUNNER_TEMP/release/${{ steps.release.outputs.asset }}" \
+            "$RUNNER_TEMP/release/SHA256SUMS" \
+            --repo "$GITHUB_REPOSITORY" --draft \
+            --target "$GITHUB_SHA" \
+            --title "${{ steps.release.outputs.title }}" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
+      - name: Verify uploaded asset before publishing
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/published"
+          gh release download "${{ steps.release.outputs.tag }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "${{ steps.release.outputs.asset }}" \
+            --dir "$RUNNER_TEMP/published"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ['RUNNER_TEMP'])
+          pins = json.loads(Path('eng/jco-bindgen.json').read_text())
+          asset = root / 'published' / pins['assetName']
+          expected = (root / 'release' / 'SHA256SUMS').read_text().split()[0]
+          actual = hashlib.sha256(asset.read_bytes()).hexdigest()
+          if actual != expected:
+              raise SystemExit('Uploaded release asset SHA-256 mismatch.')
+          PY
+          gh release edit "${{ steps.release.outputs.tag }}" \
+            --repo "$GITHUB_REPOSITORY" --draft=false
