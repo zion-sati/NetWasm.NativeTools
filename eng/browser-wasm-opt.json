@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "releaseTag": "binaryen-wasm-opt-v132-browser.1",
+  "assetName": "binaryen-wasm-opt-132-browser.1.zip",
+  "effectiveVersion": "132+browser.1",
+  "upstream": {
+    "repository": "https://github.com/WebAssembly/binaryen",
+    "version": "132",
+    "revision": "79dfe6b412a3c22bfdb190ed6a4d79adf734db5d",
+    "sourceArchiveUrl": "https://codeload.github.com/WebAssembly/binaryen/tar.gz/79dfe6b412a3c22bfdb190ed6a4d79adf734db5d",
+    "sourceArchiveSha256": "af7c3946c78aba3bc9dd95d9055a56e28fa785d4e5212855ec6871c92c52afed",
+    "sourceTreeSha256": "3e06c4eb8b84b52847a734ee6d944431387564f4476913bb128966b0b00322e3"
+  },
+  "build": {
+    "emsdkRevision": "e3a0604c3d130d6ab2c40e14a1861accd939a255",
+    "emscriptenVersion": "6.0.7",
+    "emscriptenRevision": "4483d70a78098ed5d860dff2dc21f3025b2da2ee",
+    "cmakeVersion": "4.3.2",
+    "ninjaVersion": "1.13.2",
+    "playwrightVersion": "1.62.1",
+    "pthreadPoolBuildSize": 8,
+    "maximumWorkerCount": 8,
+    "reservedProcessorCount": 2,
+    "runtimeWorkerCountExpression": "Module[\"pthreadPoolSize\"]??Math.min(8,Math.max(1,(navigator.hardwareConcurrency||4)-2))",
+    "binaryenCoresEnvironmentVariable": "BINARYEN_CORES",
+    "target": "wasm-opt",
+    "adaptationVersion": 1
+  },
+  "license": {
+    "path": "eng/browser-wasm-opt/LICENSE.upstream",
+    "sha256": "64c0d02491e16eced74826440ecd2bcf7722d37fa586faf457b2494293afbffe"
+  }
+}
