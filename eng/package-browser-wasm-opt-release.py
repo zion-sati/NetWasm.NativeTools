@@ -101,9 +101,10 @@ def validate_receipt(
             f"{build['emscriptenVersion']} ({build['emscriptenRevision']})"
         ),
         "cmakeVersion": f"cmake version {build['cmakeVersion']}",
-        "ninjaVersion": build["ninjaVersion"],
     }
-    if any(receipt[field] != expected for field, expected in expected_versions.items()):
+    if any(receipt[field] != expected for field, expected in expected_versions.items()) or \
+            not build_module.is_pinned_ninja_version(
+                str(receipt["ninjaVersion"]), build["ninjaVersion"]):
         raise ValueError("Browser wasm-opt tool versions do not match the pins.")
 
 

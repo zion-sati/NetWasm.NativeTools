@@ -117,6 +117,13 @@ class BrowserWasmOptBuildTests(unittest.TestCase):
 
         self.assertEqual(expected, actual)
 
+    def test_ninja_pin_accepts_the_pinned_kitware_wheel_suffix_only(self):
+        self.assertTrue(BUILD.is_pinned_ninja_version("1.13.2", "1.13.2"))
+        self.assertTrue(BUILD.is_pinned_ninja_version(
+            "1.13.2.git.kitware.jobserver-pipe-1", "1.13.2"))
+        self.assertFalse(BUILD.is_pinned_ninja_version("1.13.1", "1.13.2"))
+        self.assertFalse(BUILD.is_pinned_ninja_version("1.13.2-local", "1.13.2"))
+
 
 class BrowserWasmOptPackageTests(unittest.TestCase):
     def receipt(self, config, javascript, wasm, source_commit):
