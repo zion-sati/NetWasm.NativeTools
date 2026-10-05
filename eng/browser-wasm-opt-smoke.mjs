@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import process from 'node:process';
-import { chromium } from 'playwright';
+import { chromium, firefox, webkit } from 'playwright';
 
 const args = process.argv.slice(2);
 const value = name => {
@@ -13,6 +13,13 @@ const value = name => {
   return args[index + 1];
 };
 const root = resolve(value('--tool'));
+const browserName = value('--browser');
+const browserType = { chromium, firefox, webkit }[browserName];
+if (!browserType) throw Error('Invalid --browser');
+const watchdog = setTimeout(() => {
+  console.error(`Browser wasm-opt smoke timed out in ${browserName}`);
+  process.exit(2);
+}, 180_000);
 const expectedWorkers = Number(value('--workers'));
 if (!Number.isInteger(expectedWorkers) || expectedWorkers < 1 || expectedWorkers > 16)
   throw Error('Invalid --workers');
@@ -62,17 +69,22 @@ await new Promise((accept, reject) => {
   server.listen(0, '127.0.0.1', accept);
 });
 const address = server.address();
-const browser = await chromium.launch({ headless: true });
+const browser = await browserType.launch({ headless: true });
 try {
   const page = await browser.newPage();
+  page.on('console', message => {
+    if (message.type() === 'error') console.error(`browser console: ${message.text()}`);
+  });
+  page.on('pageerror', error => console.error(`browser page error: ${error.stack ?? error}`));
   await page.goto(`http://127.0.0.1:${address.port}/`);
   await page.waitForFunction(() => globalThis.result, undefined, { timeout: 120_000 });
   const result = await page.evaluate(() => globalThis.result);
   if (!result.success || result.exitCode !== 0 || result.workers !== expectedWorkers ||
       result.outputBytes !== 8 || !result.isolated || !result.sharedArrayBuffer)
     throw Error(`Browser wasm-opt smoke failed: ${JSON.stringify(result)}`);
-  console.log(JSON.stringify(result));
+  console.log(JSON.stringify({ browser: browserName, platform: process.platform, ...result }));
 } finally {
   await browser.close();
   await new Promise(accept => server.close(accept));
+  clearTimeout(watchdog);
 }

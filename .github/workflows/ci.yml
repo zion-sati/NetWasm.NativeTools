@@ -27,5 +27,6 @@ jobs:
             eng/build-windows-arm64-lld.py \
             eng/package-browser-wasm-opt-release.py \
             eng/package-jco-bindgen-release.py \
-            eng/package-release.py
+            eng/package-release.py \
+            eng/qualify-released-browser-wasm-opt.py
           python -m unittest discover -s eng/tests -p 'test_*.py' -v
