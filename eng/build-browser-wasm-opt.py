@@ -148,6 +148,13 @@ def version_line(
     return matches[0]
 
 
+def is_pinned_ninja_version(actual: str, expected: str) -> bool:
+    return re.fullmatch(
+        re.escape(expected) + r"(?:\.git\.kitware\.[0-9A-Za-z.-]+)?",
+        actual,
+    ) is not None
+
+
 def require_tools(config: dict[str, object], environment: dict[str, str]) -> dict[str, str]:
     emcc_prefix = "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) "
     # A clean emsdk can emit a one-time sanity-check message before the version.
@@ -164,7 +171,7 @@ def require_tools(config: dict[str, object], environment: dict[str, str]) -> dic
     if cmake_version != f"cmake version {config['cmakeVersion']}":
         raise ValueError("CMake version does not match the pin.")
     ninja_version = first_line(["ninja", "--version"], environment)
-    if ninja_version != config["ninjaVersion"]:
+    if not is_pinned_ninja_version(ninja_version, config["ninjaVersion"]):
         raise ValueError("Ninja version does not match the pin.")
     return {
         "emccVersion": emcc_version,
