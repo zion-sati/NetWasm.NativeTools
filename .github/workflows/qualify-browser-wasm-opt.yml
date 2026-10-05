@@ -23,7 +23,7 @@ jobs:
         include:
           - os: ubuntu-24.04
             browser: chromium
-          - os: macos-14
+          - os: macos-15
             browser: webkit
           - os: windows-2025
             browser: firefox

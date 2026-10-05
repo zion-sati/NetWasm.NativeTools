@@ -16,6 +16,10 @@ const root = resolve(value('--tool'));
 const browserName = value('--browser');
 const browserType = { chromium, firefox, webkit }[browserName];
 if (!browserType) throw Error('Invalid --browser');
+const watchdog = setTimeout(() => {
+  console.error(`Browser wasm-opt smoke timed out in ${browserName}`);
+  process.exit(2);
+}, 180_000);
 const expectedWorkers = Number(value('--workers'));
 if (!Number.isInteger(expectedWorkers) || expectedWorkers < 1 || expectedWorkers > 16)
   throw Error('Invalid --workers');
@@ -68,6 +72,10 @@ const address = server.address();
 const browser = await browserType.launch({ headless: true });
 try {
   const page = await browser.newPage();
+  page.on('console', message => {
+    if (message.type() === 'error') console.error(`browser console: ${message.text()}`);
+  });
+  page.on('pageerror', error => console.error(`browser page error: ${error.stack ?? error}`));
   await page.goto(`http://127.0.0.1:${address.port}/`);
   await page.waitForFunction(() => globalThis.result, undefined, { timeout: 120_000 });
   const result = await page.evaluate(() => globalThis.result);
@@ -78,4 +86,5 @@ try {
 } finally {
   await browser.close();
   await new Promise(accept => server.close(accept));
+  clearTimeout(watchdog);
 }
