@@ -1,0 +1,163 @@
+name: Release multithreaded browser wasm-opt
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: browser-wasm-opt-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out signed release recipe
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - name: Install Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+      - name: Install pinned Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '26.7.0'
+      - name: Install pinned build and browser tools
+        shell: bash
+        run: |
+          python - <<'PY' > "$RUNNER_TEMP/pins.env"
+          import json
+          from pathlib import Path
+          pins = json.loads(Path('eng/browser-wasm-opt.json').read_text())
+          build = pins['build']
+          print(f"EMSDK_REVISION={build['emsdkRevision']}")
+          print(f"EMSCRIPTEN_VERSION={build['emscriptenVersion']}")
+          print(f"CMAKE_VERSION={build['cmakeVersion']}")
+          print(f"NINJA_VERSION={build['ninjaVersion']}")
+          print(f"PLAYWRIGHT_VERSION={build['playwrightVersion']}")
+          PY
+          source "$RUNNER_TEMP/pins.env"
+          python -m pip install "cmake==$CMAKE_VERSION" "ninja==$NINJA_VERSION"
+          git init "$RUNNER_TEMP/emsdk"
+          git -C "$RUNNER_TEMP/emsdk" remote add origin https://github.com/emscripten-core/emsdk.git
+          git -C "$RUNNER_TEMP/emsdk" fetch --depth=1 origin "$EMSDK_REVISION"
+          git -C "$RUNNER_TEMP/emsdk" checkout --detach FETCH_HEAD
+          "$RUNNER_TEMP/emsdk/emsdk" install "$EMSCRIPTEN_VERSION"
+          "$RUNNER_TEMP/emsdk/emsdk" activate "$EMSCRIPTEN_VERSION"
+          npm install --no-save "playwright@$PLAYWRIGHT_VERSION"
+          npx playwright install --with-deps chromium
+      - name: Read versioned release identity
+        id: release
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          pins = json.loads(Path('eng/browser-wasm-opt.json').read_text())
+          print(f"tag={pins['releaseTag']}")
+          print(f"asset={pins['assetName']}")
+          print(f"title=Binaryen wasm-opt {pins['effectiveVersion']} for browsers")
+          PY
+      - name: Verify release identity is unused
+        shell: bash
+        run: |
+          if gh release view "${{ steps.release.outputs.tag }}" >/dev/null 2>&1 ||
+             [[ -n "$(git ls-remote --tags origin "refs/tags/${{ steps.release.outputs.tag }}")" ]]; then
+            echo 'This tag or release already exists; bump the build revision.' >&2
+            exit 1
+          fi
+      - name: Build browser wasm-opt from pinned source
+        shell: bash
+        run: |
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh" >/dev/null
+          python eng/build-browser-wasm-opt.py \
+            --output "$RUNNER_TEMP/browser-wasm-opt" \
+            --receipt "$RUNNER_TEMP/browser-wasm-opt-receipt.json" \
+            --cache "$RUNNER_TEMP/native-inputs"
+      - name: Exercise SharedArrayBuffer and pthreads in Chromium
+        shell: bash
+        run: |
+          WASM_OPT_SMOKE_WORKERS=$(python - <<'PY'
+          import json
+          from pathlib import Path
+          pins = json.loads(Path('eng/browser-wasm-opt.json').read_text())
+          print(min(4, pins['build']['maximumWorkerCount']))
+          PY
+          )
+          node eng/browser-wasm-opt-smoke.mjs \
+            --tool "$RUNNER_TEMP/browser-wasm-opt" \
+            --workers "$WASM_OPT_SMOKE_WORKERS"
+      - name: Verify and package release asset
+        shell: bash
+        run: |
+          python eng/package-browser-wasm-opt-release.py \
+            --tool "$RUNNER_TEMP/browser-wasm-opt" \
+            --receipt "$RUNNER_TEMP/browser-wasm-opt-receipt.json" \
+            --output "$RUNNER_TEMP/release"
+      - name: Retain candidate evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: browser-wasm-opt-candidate
+          path: ${{ runner.temp }}/release/*
+          if-no-files-found: error
+          retention-days: 7
+      - name: Write release notes
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          pins = json.loads(Path('eng/browser-wasm-opt.json').read_text())
+          receipt = json.loads(Path(os.environ['RUNNER_TEMP'], 'browser-wasm-opt-receipt.json').read_text())
+          Path(os.environ['RUNNER_TEMP'], 'release-notes.md').write_text(
+              f"Binaryen wasm-opt `{pins['effectiveVersion']}` compiled for browser "
+              "WebAssembly with SharedArrayBuffer pthreads.\n\n"
+              "The release archive contains the ES module, Wasm module, upstream "
+              "license, and a path-free receipt binding the pinned source, toolchain, "
+              "runtime worker policy, and output SHA-256 values. The candidate is "
+              "exercised in Chromium with real pthread workers before publication.\n\n"
+              f"Builder source: `{receipt['sourceCommit']}`. Use the exact versioned "
+              "asset and verify its SHA-256.\n",
+              encoding='utf-8')
+          PY
+      - name: Create draft release with verified assets
+        shell: bash
+        run: |
+          gh release create "${{ steps.release.outputs.tag }}" \
+            "$RUNNER_TEMP/release/${{ steps.release.outputs.asset }}" \
+            "$RUNNER_TEMP/release/SHA256SUMS" \
+            --repo "$GITHUB_REPOSITORY" --draft \
+            --target "$GITHUB_SHA" \
+            --title "${{ steps.release.outputs.title }}" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
+      - name: Verify uploaded asset before publishing
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/published"
+          gh release download "${{ steps.release.outputs.tag }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "${{ steps.release.outputs.asset }}" \
+            --dir "$RUNNER_TEMP/published"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP'])
+          pins = json.loads(Path('eng/browser-wasm-opt.json').read_text())
+          asset = root / 'published' / pins['assetName']
+          expected = (root / 'release' / 'SHA256SUMS').read_text().split()[0]
+          if hashlib.sha256(asset.read_bytes()).hexdigest() != expected:
+              raise SystemExit('Uploaded release asset SHA-256 mismatch.')
+          PY
+          gh release edit "${{ steps.release.outputs.tag }}" \
+            --repo "$GITHUB_REPOSITORY" --draft=false

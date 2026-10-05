@@ -1,6 +1,6 @@
 # NetWasm NativeTools
 
-Pinned native build recipes and release assets for tools used to build NetWasm applications. The repository builds `wasm-ld` for Windows ARM64 and NetWasm's patched Jco bindgen Wasm on GitHub Actions. Built tools belong in versioned GitHub Releases, not Git.
+Pinned native build recipes and release assets for tools used to build NetWasm applications. The repository builds `wasm-ld` for Windows ARM64, NetWasm's patched Jco bindgen Wasm, and a multithreaded browser build of Binaryen's `wasm-opt` on GitHub Actions. Built tools belong in versioned GitHub Releases, not Git.
 
 This repository and its `wasm-ld` release assets use LLVM's [Apache-2.0 license with LLVM Exceptions](LICENSE.txt). Each release archive includes the pinned upstream LLVM and LLD licenses, bundled third-party notices, and a build receipt.
 
@@ -29,3 +29,25 @@ The release contains
 Consumers pin the tag, asset name, archive hash, module hash, and builder commit.
 A changed source, patch, recipe, or toolchain gets a new immutable build
 revision.
+
+## Multithreaded browser wasm-opt
+
+[`eng/browser-wasm-opt.json`](eng/browser-wasm-opt.json) pins Binaryen,
+Emscripten, CMake, Ninja, the upstream license, the browser adaptation, and the
+release identity. The
+[`release-browser-wasm-opt`](.github/workflows/release-browser-wasm-opt.yml)
+workflow compiles Binaryen's actual `wasm-opt` CLI to an ES module and Wasm
+module with pthread support. It verifies shared memory, rejects local build
+paths, and exercises the output in a cross-origin-isolated Chromium page with
+real pthread workers before packaging it.
+
+The host selects the worker count at runtime from
+`navigator.hardwareConcurrency`, capped at eight and reserving two processors
+for the tools worker and page. It passes the same count to Emscripten's
+preallocated pthread pool and Binaryen's `BINARYEN_CORES`, which avoids
+synchronous thread-creation deadlocks while scaling down on smaller devices.
+
+The release contains `binaryen-wasm-opt-<Binaryen version>-browser.<build>.zip`
+and `SHA256SUMS`. The archive contains `wasm-opt.js`, `wasm-opt.wasm`, the
+upstream license, and a path-free build receipt. Consumers pin the exact tag,
+archive hash, JavaScript hash, Wasm hash, and builder commit.

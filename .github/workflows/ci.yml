@@ -22,8 +22,10 @@ jobs:
       - name: Check release recipe and archive validation
         run: |
           python -m py_compile \
+            eng/build-browser-wasm-opt.py \
             eng/build-jco-bindgen.py \
             eng/build-windows-arm64-lld.py \
+            eng/package-browser-wasm-opt-release.py \
             eng/package-jco-bindgen-release.py \
             eng/package-release.py
           python -m unittest discover -s eng/tests -p 'test_*.py' -v
