@@ -4,6 +4,7 @@ import importlib.util
 import json
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -102,6 +103,19 @@ class BrowserWasmOptBuildTests(unittest.TestCase):
         self.assertEqual("6.0.7", config["build"]["emscriptenVersion"])
         self.assertEqual(config["license"]["sha256"],
                          BUILD.sha256(ROOT / config["license"]["path"]))
+
+    def test_version_line_ignores_clean_emsdk_sanity_output(self):
+        expected = (
+            "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) "
+            "6.0.7 (4483d70a78098ed5d860dff2dc21f3025b2da2ee)"
+        )
+        with mock.patch.object(BUILD.subprocess, "check_output", return_value=(
+            "shared:INFO: (Emscripten: Running sanity checks)\n" + expected + "\n"
+        )):
+            actual = BUILD.version_line(
+                ["emcc", "--version"], "emcc (Emscripten ")
+
+        self.assertEqual(expected, actual)
 
 
 class BrowserWasmOptPackageTests(unittest.TestCase):

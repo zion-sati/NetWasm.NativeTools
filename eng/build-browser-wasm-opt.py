@@ -134,8 +134,25 @@ def first_line(command: list[str], environment: dict[str, str] | None = None) ->
     ).splitlines()[0]
 
 
+def version_line(
+    command: list[str], prefix: str,
+    environment: dict[str, str] | None = None,
+) -> str:
+    lines = subprocess.check_output(
+        command, env=environment, text=True, errors="replace",
+        stderr=subprocess.STDOUT,
+    ).splitlines()
+    matches = [line for line in lines if line.startswith(prefix)]
+    if len(matches) != 1:
+        raise ValueError(f"Expected one {prefix.strip()} version line.")
+    return matches[0]
+
+
 def require_tools(config: dict[str, object], environment: dict[str, str]) -> dict[str, str]:
-    emcc_version = first_line(["emcc", "--version"], environment)
+    emcc_prefix = "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) "
+    # A clean emsdk can emit a one-time sanity-check message before the version.
+    # Select the canonical version line without weakening the exact pin below.
+    emcc_version = version_line(["emcc", "--version"], emcc_prefix, environment)
     match = re.fullmatch(
         r"emcc \(Emscripten gcc/clang-like replacement \+ linker emulating GNU ld\) "
         r"([^ ]+) \(([0-9a-f]{40})\)", emcc_version)
