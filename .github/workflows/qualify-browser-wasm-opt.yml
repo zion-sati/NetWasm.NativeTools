@@ -1,0 +1,75 @@
+name: Qualify released browser wasm-opt
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/qualify-browser-wasm-opt.yml
+      - eng/browser-wasm-opt-smoke.mjs
+      - eng/browser-wasm-opt.json
+      - eng/build-browser-wasm-opt.py
+      - eng/package-browser-wasm-opt-release.py
+      - eng/qualify-released-browser-wasm-opt.py
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    name: ${{ matrix.os }} / ${{ matrix.browser }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            browser: chromium
+          - os: macos-14
+            browser: webkit
+          - os: windows-2025
+            browser: firefox
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 26.7.0
+      - name: Install the pinned browser runtime
+        shell: bash
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: |
+          PLAYWRIGHT_VERSION=$(python -c "import json; print(json.load(open('eng/browser-wasm-opt.json'))['build']['playwrightVersion'])")
+          npm install --no-save "playwright@$PLAYWRIGHT_VERSION"
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            npx playwright install --with-deps "$BROWSER"
+          else
+            npx playwright install "$BROWSER"
+          fi
+      - name: Verify the immutable released tool
+        shell: bash
+        run: python eng/qualify-released-browser-wasm-opt.py --output "$RUNNER_TEMP/browser-wasm-opt"
+      - name: Exercise SharedArrayBuffer and pthread workers
+        shell: bash
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: |
+          WORKERS=$(python -c "import json; print(min(4, json.load(open('eng/browser-wasm-opt.json'))['build']['maximumWorkerCount']))")
+          node eng/browser-wasm-opt-smoke.mjs \
+            --tool "$RUNNER_TEMP/browser-wasm-opt" \
+            --browser "$BROWSER" \
+            --workers "$WORKERS" | tee "$RUNNER_TEMP/browser-wasm-opt-result.json"
+      - name: Retain qualification evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: browser-wasm-opt-${{ matrix.os }}-${{ matrix.browser }}
+          path: ${{ runner.temp }}/browser-wasm-opt-result.json
+          if-no-files-found: warn
+          retention-days: 14

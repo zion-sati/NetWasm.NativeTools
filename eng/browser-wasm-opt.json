@@ -3,6 +3,12 @@
   "releaseTag": "binaryen-wasm-opt-v132-browser.1",
   "assetName": "binaryen-wasm-opt-132-browser.1.zip",
   "effectiveVersion": "132+browser.1",
+  "release": {
+    "sourceCommit": "4da3952dd65d38e5f45483a812d7378ca595055d",
+    "url": "https://github.com/zion-sati/NetWasm.NativeTools/releases/download/binaryen-wasm-opt-v132-browser.1/binaryen-wasm-opt-132-browser.1.zip",
+    "bytes": 2460250,
+    "sha256": "621dfab0798518994a011d0d283141a01109b1e6116f70b57278262b2d50231a"
+  },
   "upstream": {
     "repository": "https://github.com/WebAssembly/binaryen",
     "version": "132",

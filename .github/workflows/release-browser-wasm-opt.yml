@@ -94,6 +94,7 @@ jobs:
           )
           node eng/browser-wasm-opt-smoke.mjs \
             --tool "$RUNNER_TEMP/browser-wasm-opt" \
+            --browser chromium \
             --workers "$WASM_OPT_SMOKE_WORKERS"
       - name: Verify and package release asset
         shell: bash
