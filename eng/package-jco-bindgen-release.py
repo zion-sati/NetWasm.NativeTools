@@ -17,7 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MODULE_NAME = "js-component-bindgen-component.core.wasm"
 RECEIPT_NAME = "build-receipt.json"
-PATCH_NAME = "jco-worker-bindings.patch"
+PATCH_NAME = "jco-component-error.patch"
 LICENSE_NAME = "LICENSE.upstream"
 ARCHIVE_FILES = (MODULE_NAME, RECEIPT_NAME, PATCH_NAME, LICENSE_NAME)
 RECEIPT_FIELDS = {
