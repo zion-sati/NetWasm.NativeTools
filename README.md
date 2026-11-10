@@ -14,6 +14,13 @@ The receipt records the LLVM commit and selected source-tree digest, the actual 
 
 ## Patched Jco bindgen Wasm
 
+The patch adds `_util.isComponentError` to Jco's generated modules: a predicate
+that recognizes the `ComponentError` a declared WIT `result` error throws by
+module-private identity, so hosts can tell a declared error from any other
+exception without trusting error properties. Jco 1.41 already exports
+interfaces under their exact component names, which earlier versions of this
+patch also preserved.
+
 [`eng/jco-bindgen.json`](eng/jco-bindgen.json) pins the upstream Jco revision and
 source tree, NetWasm patch, license, Rust, Node, pnpm, canonical source paths,
 and next release identity. The

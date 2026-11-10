@@ -1,22 +1,33 @@
 {
   "schemaVersion": 1,
-  "releaseTag": "jco-bindgen-v1.28.1-netwasm.2.1",
-  "assetName": "jco-bindgen-1.28.1-netwasm.2.1.zip",
-  "effectiveVersion": "1.28.1+netwasm.2",
+  "releaseTag": "jco-bindgen-v1.41.0-netwasm.2.1",
+  "assetName": "jco-bindgen-1.41.0-netwasm.2.1.zip",
+  "effectiveVersion": "1.41.0+netwasm.2",
   "upstream": {
     "repository": "https://github.com/bytecodealliance/jco",
-    "revision": "e3ed4ca01e13a2f9ee6d0b44abec46c8da662791",
-    "tag": "jco-v1.28.1",
-    "sourceArchiveUrl": "https://codeload.github.com/bytecodealliance/jco/tar.gz/e3ed4ca01e13a2f9ee6d0b44abec46c8da662791",
-    "sourceArchiveSha256": "226db94ed40e31df0594409d163723ca8170323c7e3c3001abcbafde5e86cb4a",
-    "sourceTreeSha256": "0e7ea1755c38e568e1d3ffd18ccd825fc23df1dd5332f4526ad996d64a3017ef"
+    "revision": "04fe1e247df7c53a09ac047b30f24fa2386aa7c8",
+    "tag": "jco-v1.41.0",
+    "sourceArchiveUrl": "https://codeload.github.com/bytecodealliance/jco/tar.gz/04fe1e247df7c53a09ac047b30f24fa2386aa7c8",
+    "sourceArchiveSha256": "6707aece74dda53d83eae8d2118c136f13fffefb885a4cabe41291ade9f8be89",
+    "sourceTreeSha256": "d9338fcae5f2454b07203d4ca993c9a9ae5b8f59c3cc3e72063f03c6dc58f7c5"
   },
   "build": {
     "rust": "1.98.1",
     "node": "26.7.0",
     "pnpm": "10.17.1",
-    "testCommand": ["cargo", "test", "-p", "js-component-bindgen", "--lib"],
-    "command": ["cargo", "xtask", "build", "release"],
+    "testCommand": [
+      "cargo",
+      "test",
+      "-p",
+      "js-component-bindgen",
+      "--lib"
+    ],
+    "command": [
+      "cargo",
+      "xtask",
+      "build",
+      "release"
+    ],
     "pathRemapping": {
       "source": "/_/jco",
       "cargoHome": "/_/cargo"
@@ -24,11 +35,14 @@
   },
   "smokeTest": {
     "fixture": "packages/jco-transpile/test/fixtures/components/runtime/flavorful.component.wasm",
-    "requiredJavaScript": ["componentErrorInstances", "isComponentError"]
+    "requiredJavaScript": [
+      "componentErrorInstances",
+      "isComponentError"
+    ]
   },
   "patch": {
-    "path": "eng/jco-bindgen/jco-worker-bindings.patch",
-    "sha256": "3b5382cdfbea87e96f4821ea7cbb557a4129d6f5c8bf8a35d34ad5413f3d42da"
+    "path": "eng/jco-bindgen/jco-netwasm.patch",
+    "sha256": "f5dd4e2ad5f21c5b357578342b84881629e37063433f56020426e41b2d926324"
   },
   "license": {
     "path": "eng/jco-bindgen/LICENSE.upstream",
