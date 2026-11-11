@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "releaseTag": "jco-bindgen-v1.41.0-netwasm.3.1",
-  "assetName": "jco-bindgen-1.41.0-netwasm.3.1.zip",
-  "effectiveVersion": "1.41.0+netwasm.3",
+  "releaseTag": "jco-bindgen-v1.41.0-netwasm.4",
+  "assetName": "jco-bindgen-1.41.0-netwasm.4.zip",
+  "effectiveVersion": "1.41.0+netwasm.4",
   "upstream": {
     "repository": "https://github.com/bytecodealliance/jco",
     "revision": "04fe1e247df7c53a09ac047b30f24fa2386aa7c8",
@@ -42,7 +42,7 @@
   },
   "patch": {
     "path": "eng/jco-bindgen/jco-netwasm.patch",
-    "sha256": "5b96738fbc48c0c9c754c4cbb16a977625e87a25f20c284fad268ad1d22700dd"
+    "sha256": "8ee79fb0430e9e791ef4489ac131ceb86b401d6446582ab1653e06842fcfb092"
   },
   "license": {
     "path": "eng/jco-bindgen/LICENSE.upstream",
