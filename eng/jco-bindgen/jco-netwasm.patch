@@ -1,3 +1,68 @@
+diff --git a/crates/js-component-bindgen/src/intrinsics/component.rs b/crates/js-component-bindgen/src/intrinsics/component.rs
+index ce10ba4..427c310 100644
+--- a/crates/js-component-bindgen/src/intrinsics/component.rs
++++ b/crates/js-component-bindgen/src/intrinsics/component.rs
+@@ -992,25 +992,45 @@ impl ComponentIntrinsic {
+                             return false;
+                         }}
+ 
++                        // A macrotask runs once the current microtasks have drained, as
++                        // setTimeout(0) does, but without its minimum delay (1 ms in Node.js,
++                        // 4 ms in browsers once timers nest), which a guest that yields often
++                        // would otherwise pay on every yield.
++                        static #nextMacrotask() {{
++                            if (typeof setImmediate === 'function') {{
++                                return new Promise((resolve) => setImmediate(resolve));
++                            }}
++                            if (typeof MessageChannel === 'function') {{
++                                return new Promise((resolve) => {{
++                                    const channel = new MessageChannel();
++                                    channel.port1.onmessage = () => {{ channel.port1.close(); resolve(); }};
++                                    channel.port2.postMessage(null);
++                                }});
++                            }}
++                            return new Promise((resolve) => setTimeout(resolve, 0));
++                        }}
++
+                         async runTickLoop() {{
+                             if (this.#tickLoop !== null) {{ return; }}
+                             this.#tickLoop = 1;
+-                            setTimeout(async () => {{
+-                                let result = this.tick();
+-                                while (result !== {component_async_state_class}.TickResult.DONE) {{
+-                                    if (result === {component_async_state_class}.TickResult.IDLE) {{
+-                                        {check_for_deadlock_fn}();
+-                                    }}
+-                                    // After resuming a task, re-tick as soon as the resumed
+-                                    // slice's microtask continuations have drained (timeout 0)
+-                                    // so queued sibling resumptions aren't charged the idle
+-                                    // polling interval; otherwise poll at the idle cadence.
+-                                    const delay = result === {component_async_state_class}.TickResult.RESUMED ? 0 : 10;
+-                                    await new Promise((resolve) => setTimeout(resolve, delay));
+-                                    result = this.tick();
++                            await {component_async_state_class}.#nextMacrotask();
++                            let result = this.tick();
++                            while (result !== {component_async_state_class}.TickResult.DONE) {{
++                                if (result === {component_async_state_class}.TickResult.IDLE) {{
++                                    {check_for_deadlock_fn}();
+                                 }}
+-                                this.#tickLoop = null;
+-                            }}, 10);
++                                // After resuming a task, re-tick as soon as the resumed
++                                // slice's microtask continuations have drained (the next
++                                // macrotask) so queued sibling resumptions aren't charged the
++                                // idle polling interval; otherwise poll at the idle cadence.
++                                if (result === {component_async_state_class}.TickResult.RESUMED) {{
++                                    await {component_async_state_class}.#nextMacrotask();
++                                }} else {{
++                                    await new Promise((resolve) => setTimeout(resolve, 10));
++                                }}
++                                result = this.tick();
++                            }}
++                            this.#tickLoop = null;
+                         }}
+ 
+                         tick() {{
 diff --git a/crates/js-component-bindgen/src/intrinsics/mod.rs b/crates/js-component-bindgen/src/intrinsics/mod.rs
 index 44f3a5e..862353a 100644
 --- a/crates/js-component-bindgen/src/intrinsics/mod.rs
