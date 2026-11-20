@@ -1,3 +1,101 @@
+diff --git a/crates/js-component-bindgen/src/function_bindgen.rs b/crates/js-component-bindgen/src/function_bindgen.rs
+index 6dbae4a..03542aa 100644
+--- a/crates/js-component-bindgen/src/function_bindgen.rs
++++ b/crates/js-component-bindgen/src/function_bindgen.rs
+@@ -509,6 +509,12 @@ impl FunctionBindgen<'_> {
+         self.emit_guest_dealloc(&ptr, &len, size, align);
+     }
+ 
++    /// Whether lowering instructions are lowering an async import's results, which the async
++    /// return-handling machinery lowers into the caller's memory when the call returns.
++    fn async_import_results(&self) -> bool {
++        self.is_async && self.for_import.unwrap_or_default()
++    }
++
+     fn lift_callbackless_async_result(&mut self) -> Option<(String, String)> {
+         if !self.is_async || self.for_import.unwrap_or_default() {
+             return None;
+@@ -1736,6 +1742,15 @@ impl Bindgen for FunctionBindgen<'_> {
+             // when a list of lists or list of Uint8Arrays is sent.
+             //
+             Instruction::ListCanonLower { element, .. } => {
++                // An async import's results are lowered by the async return-handling machinery
++                // (see `AsyncTaskIntrinsic::LowerImport` and `task.resolve`), as for `FutureLower`:
++                // lowering here as well would register the resource or allocate guest memory a
++                // second time, which nothing then releases.
++                if self.async_import_results() {
++                    results.push("0".into());
++                    results.push("0".into());
++                    return;
++                }
+                 self.intrinsic(Intrinsic::Conversion(
+                     ConversionIntrinsic::RequireValidNumericPrimitive,
+                 ));
+@@ -1821,6 +1836,15 @@ impl Bindgen for FunctionBindgen<'_> {
+             }
+ 
+             Instruction::StringLower { .. } => {
++                // An async import's results are lowered by the async return-handling machinery
++                // (see `AsyncTaskIntrinsic::LowerImport` and `task.resolve`), as for `FutureLower`:
++                // lowering here as well would register the resource or allocate guest memory a
++                // second time, which nothing then releases.
++                if self.async_import_results() {
++                    results.push("0".into());
++                    results.push("0".into());
++                    return;
++                }
+                 // Only Utf8 and Utf16 supported for now
+                 assert!(matches!(
+                     self.encoding,
+@@ -1908,6 +1932,15 @@ impl Bindgen for FunctionBindgen<'_> {
+             Instruction::ListLower { element, .. } => {
+                 let (body, body_results) = self.blocks.pop().unwrap();
+                 assert!(body_results.is_empty());
++                // An async import's results are lowered by the async return-handling machinery
++                // (see `AsyncTaskIntrinsic::LowerImport` and `task.resolve`), as for `FutureLower`:
++                // lowering here as well would register the resource or allocate guest memory a
++                // second time, which nothing then releases.
++                if self.async_import_results() {
++                    results.push("0".into());
++                    results.push("0".into());
++                    return;
++                }
+                 let tmp = self.tmp();
+                 let vec = format!("vec{tmp}");
+                 let result = format!("result{tmp}");
+@@ -3089,6 +3122,14 @@ impl Bindgen for FunctionBindgen<'_> {
+             }
+ 
+             Instruction::HandleLower { handle, name, .. } => {
++                // An async import's results are lowered by the async return-handling machinery
++                // (see `AsyncTaskIntrinsic::LowerImport` and `task.resolve`), as for `FutureLower`:
++                // lowering here as well would register the resource or allocate guest memory a
++                // second time, which nothing then releases.
++                if self.async_import_results() {
++                    results.push(operands[0].clone());
++                    return;
++                }
+                 let (Handle::Own(ty) | Handle::Borrow(ty)) = handle;
+                 let is_own = matches!(handle, Handle::Own(_));
+                 let ResourceTable { imported, data } =
+@@ -3341,7 +3382,7 @@ impl Bindgen for FunctionBindgen<'_> {
+                 // (see `AsyncTaskIntrinsic::LowerImport` and `task.resolve`), so
+                 // lowering the value inline here as well would consume/settle the
+                 // `Promise` and double-lower it.
+-                if self.is_async && self.for_import.unwrap_or_default() {
++                if self.async_import_results() {
+                     results.push(future_arg.clone());
+                     return;
+                 }
+@@ -3708,7 +3749,7 @@ impl Bindgen for FunctionBindgen<'_> {
+                 // (see `AsyncTaskIntrinsic::LowerImport` and `task.resolve`), so
+                 // lowering the value inline here as well would consume/lock the
+                 // stream (e.g. a host `ReadableStream`) and double-lower it.
+-                if self.is_async && self.for_import.unwrap_or_default() {
++                if self.async_import_results() {
+                     results.push(stream_arg.clone());
+                     return;
+                 }
 diff --git a/crates/js-component-bindgen/src/intrinsics/component.rs b/crates/js-component-bindgen/src/intrinsics/component.rs
 index ce10ba4..427c310 100644
 --- a/crates/js-component-bindgen/src/intrinsics/component.rs
@@ -76,10 +174,49 @@ index 44f3a5e..862353a 100644
                  }
              ",
 diff --git a/crates/js-component-bindgen/src/intrinsics/p3/async_future.rs b/crates/js-component-bindgen/src/intrinsics/p3/async_future.rs
-index 23ac34b..00f199f 100644
+index 23ac34b..8488755 100644
 --- a/crates/js-component-bindgen/src/intrinsics/p3/async_future.rs
 +++ b/crates/js-component-bindgen/src/intrinsics/p3/async_future.rs
-@@ -780,6 +780,11 @@ impl AsyncFutureIntrinsic {
+@@ -441,6 +441,10 @@ impl AsyncFutureIntrinsic {
+                         writeEnd.setWaitableIdx(cstate.handles.insert(writeEnd));
+                         writeEnd.setHandle(futureTable.insert(writeEnd));
+                         if (writeEnd.futureTableIdx() !== tableIdx) {{ throw new Error("unexpectedly mismatched future table"); }}
++                        future.setReleaseHostWriterFn(() => {{
++                            cstate.handles.remove(writeEnd.waitableIdx());
++                            futureTable.remove(writeEnd.handle());
++                        }});
+ 
+                         const writeEndWaitableIdx = writeEnd.waitableIdx();
+                         const writeEndHandle = writeEnd.handle();
+@@ -622,6 +626,9 @@ impl AsyncFutureIntrinsic {
+                 );
+                 let runtime_error_class =
+                     render_args.require_intrinsic(Intrinsic::WebAssemblyRuntimeError);
++                let global_future_table_map =
++                    render_args.require_intrinsic(Self::GlobalFutureTableMap);
++                let global_future_map = render_args.require_intrinsic(Self::GlobalFutureMap);
+ 
+                 output.push_str(&format!(
+                     r#"
+@@ -676,6 +683,17 @@ impl AsyncFutureIntrinsic {
+                            }}
+                            if (futureEnd.isInSet()) {{ throw new {runtime_error_class}({CANNOT_LIFT_FUTURE_IN_WAITABLE_SET:?}); }}
+ 
++                            // The host reads the future once, through a promise it cannot drop:
++                            // once that read completes, the end leaves the component's tables and
++                            // drops, as a guest reader's drop would remove it, and this lifted
++                            // future leaves the global map, since the host can no longer pass it on.
++                            futureEnd.setHostReleaseFn(() => {{
++                                if (futureEnd.isDropped()) {{ return; }}
++                                cstate.handles.remove(futureEnd.waitableIdx());
++                                {global_future_table_map}[this.#futureTableIdx].table.remove(futureEnd.handle());
++                                {global_future_map}.remove(this.#rep);
++                                futureEnd.drop();
++                            }});
+                             return futureEnd.promise();
+                         }}
+                     }}
+@@ -780,6 +798,11 @@ impl AsyncFutureIntrinsic {
                              if (f) {{ f(result); }}
                          }}
  
@@ -91,7 +228,57 @@ index 23ac34b..00f199f 100644
                          setPendingEvent(fn) {{
                              if (!this.#waitable) {{ throw new Error('missing/invalid waitable'); }}
                              {debug_log_fn}('[{future_end_class}#setPendingEvent()]', {{
-@@ -1158,13 +1163,7 @@ impl AsyncFutureIntrinsic {
+@@ -990,6 +1013,7 @@ impl AsyncFutureIntrinsic {
+                                   }}
+ 
+                                   let buffer = args.buffer;
++                                  let bufferID;
+                                   if (!buffer) {{
+                                       const createBufferRes = {global_buffer_mgr}.createBuffer({{
+                                           componentIdx,
+@@ -1003,6 +1027,7 @@ impl AsyncFutureIntrinsic {
+                                           elemMeta,
+                                       }});
+                                       buffer = createBufferRes.buffer;
++                                      bufferID = createBufferRes.id;
+                                   }}
+ 
+                                   const futureEvent = (res) => {{
+@@ -1020,6 +1045,8 @@ impl AsyncFutureIntrinsic {
+                                       }} else {{
+                                           this.setCopyState({future_end_class}.CopyState.IDLE);
+                                       }}
++                                      // The copy is complete: the manager releases the buffer it created.
++                                      if (bufferID !== undefined) {{ {global_buffer_mgr}.deleteBuffer(componentIdx, bufferID); }}
+                                       return {{ code: {async_event_code_enum}.FUTURE_READ, payload0: this.waitableIdx(), payload1: res }};
+                                   }};
+ 
+@@ -1087,6 +1114,7 @@ impl AsyncFutureIntrinsic {
+                                   }}
+ 
+                                   let buffer = args.buffer;
++                                  let bufferID;
+                                   if (!buffer) {{
+                                       const createBufferRes = {global_buffer_mgr}.createBuffer({{
+                                           componentIdx,
+@@ -1100,6 +1128,7 @@ impl AsyncFutureIntrinsic {
+                                           elemMeta,
+                                       }});
+                                       buffer = createBufferRes.buffer;
++                                      bufferID = createBufferRes.id;
+                                   }}
+ 
+                                   const futureEvent = (res) => {{
+@@ -1117,6 +1146,8 @@ impl AsyncFutureIntrinsic {
+                                       }} else {{
+                                           this.setCopyState({future_end_class}.CopyState.IDLE);
+                                       }}
++                                      // The copy is complete: the manager releases the buffer it created.
++                                      if (bufferID !== undefined) {{ {global_buffer_mgr}.deleteBuffer(componentIdx, bufferID); }}
+                                       return {{ code: {async_event_code_enum}.FUTURE_WRITE, payload0: this.waitableIdx(), payload1: res }};
+                                   }};
+ 
+@@ -1158,13 +1189,7 @@ impl AsyncFutureIntrinsic {
                                        this.setCopyState({future_end_class}.CopyState.ASYNC_COPYING);
  
                                         // Wait for the write to complete
@@ -106,7 +293,17 @@ index 23ac34b..00f199f 100644
  
                                         if (!this.hasPendingEvent()) {{
                                             throw new Error("missing pending event after blocked future read");
-@@ -1218,13 +1217,7 @@ impl AsyncFutureIntrinsic {
+@@ -1179,6 +1204,9 @@ impl AsyncFutureIntrinsic {
+ 
+                                   const vs = buffer.read(1);
+                                   if (vs.length !== 1) {{ throw new Error('multiple results from future'); }}
++                                  const releaseFn = this.#hostReleaseFn;
++                                  this.#hostReleaseFn = null;
++                                  releaseFn?.();
+ 
+                                   // The copy event is published from inside the guest's current
+                                   // callback slice.
+@@ -1218,13 +1246,7 @@ impl AsyncFutureIntrinsic {
                                        this.setCopyState({future_end_class}.CopyState.ASYNC_COPYING);
  
                                         // Wait for the write to complete
@@ -121,11 +318,86 @@ index 23ac34b..00f199f 100644
  
                                         if (!this.hasPendingEvent()) {{
                                             throw new Error("missing pending event after blocked future write");
+@@ -1326,6 +1348,10 @@ impl AsyncFutureIntrinsic {
+                             if (this.#hostInjectFn) {{ throw new Error('host injection fn is already set'); }}
+                             this.#hostInjectFn = f;
+                         }}
++                        hasHostInject() {{ return !!this.#hostInjectFn; }}
++
++                        #hostReleaseFn = null;
++                        setHostReleaseFn(f) {{ this.#hostReleaseFn = f; }}
+ 
+                         promise() {{
+                             if (this.#promise) {{ return this.#promise; }}
+@@ -1364,6 +1390,7 @@ impl AsyncFutureIntrinsic {
+                     render_args.require_intrinsic(Self::InternalFutureClass);
+                 let write_end_class = render_args.require_intrinsic(Self::FutureWritableEndClass);
+                 let read_end_class = render_args.require_intrinsic(Self::FutureReadableEndClass);
++                let global_future_map = render_args.require_intrinsic(Self::GlobalFutureMap);
+ 
+                 uwriteln!(
+                     output,
+@@ -1402,7 +1429,10 @@ impl AsyncFutureIntrinsic {
+                                 // from inside the guest.
+                                 hostInjectFn: args.hostInjectFn,
+                                 isPeerDroppedFn: () => this.#writeEnd?.isDropped() ?? false,
+-                                notifyPeerDroppedFn: () => this.#writeEnd?.notifyDropped(),
++                                notifyPeerDroppedFn: () => {{
++                                    this.#writeEnd?.notifyDropped();
++                                    this.#releaseWhenDropped();
++                                }},
+                             }});
+ 
+                             this.#writeEnd = new {write_end_class}({{
+@@ -1413,10 +1443,31 @@ impl AsyncFutureIntrinsic {
+                                 waitable: writeWaitable,
+                                 hostOwned: true,
+                                 isPeerDroppedFn: () => this.#readEnd.isDropped(),
+-                                notifyPeerDroppedFn: () => this.#readEnd.notifyDropped(),
++                                notifyPeerDroppedFn: () => {{
++                                    this.#readEnd.notifyDropped();
++                                    this.#releaseWhenDropped();
++                                }},
+                             }});
+                         }}
+ 
++                        // Once both ends are dropped nothing reaches the future by its global rep,
++                        // so the global map releases it. A host-fed future's writer is the host's own,
++                        // which no guest handle drops: once the reader is dropped the writer leaves the
++                        // component's tables as a guest's drop would remove it.
++                        #releaseWhenDropped() {{
++                            if (this.#globalFutureMapRep === undefined) {{ return; }}
++                            if (!this.#readEnd?.isDropped()) {{ return; }}
++                            const hostFed = this.#readEnd.hasHostInject?.() ?? false;
++                            if (!this.#writeEnd?.isDropped() && !hostFed) {{ return; }}
++                            if (hostFed && !this.#writeEnd.isCopying()) {{ this.#releaseHostWriterFn?.(); }}
++                            {global_future_map}.remove(this.#globalFutureMapRep);
++                            this.#globalFutureMapRep = undefined;
++                        }}
++
++                        // Removes a host-fed future's writer from the tables its component holds it in.
++                        #releaseHostWriterFn = null;
++                        setReleaseHostWriterFn(f) {{ this.#releaseHostWriterFn = f; }}
++
+                         elemMeta() {{ return this.#elemMeta; }}
+                         readEnd() {{ return this.#readEnd; }}
+                         writeEnd() {{ return this.#writeEnd; }}
 diff --git a/crates/js-component-bindgen/src/intrinsics/p3/async_stream.rs b/crates/js-component-bindgen/src/intrinsics/p3/async_stream.rs
-index 06890ab..618f42e 100644
+index 06890ab..53eccb1 100644
 --- a/crates/js-component-bindgen/src/intrinsics/p3/async_stream.rs
 +++ b/crates/js-component-bindgen/src/intrinsics/p3/async_stream.rs
-@@ -669,6 +669,11 @@ impl AsyncStreamIntrinsic {
+@@ -415,6 +415,10 @@ impl AsyncStreamIntrinsic {
+                         writeEnd.setWaitableIdx(cstate.handles.insert(writeEnd));
+                         writeEnd.setHandle(localStreamTable.insert(writeEnd));
+                         if (writeEnd.streamTableIdx() !== tableIdx) {{ throw new Error("unexpectedly mismatched stream table"); }}
++                        stream.setReleaseHostWriterFn(() => {{
++                            cstate.handles.remove(writeEnd.waitableIdx());
++                            localStreamTable.remove(writeEnd.handle());
++                        }});
+ 
+                         const writeEndWaitableIdx = writeEnd.waitableIdx();
+                         const writeEndHandle = writeEnd.handle();
+@@ -669,6 +673,11 @@ impl AsyncStreamIntrinsic {
                              }}
                          }}
  
@@ -137,7 +409,17 @@ index 06890ab..618f42e 100644
                          setPendingEvent(fn) {{
                              if (!this.#waitable) {{ throw new Error('missing/invalid waitable'); }}
                              {debug_log_fn}('[{stream_end_class}#setPendingEvent()]', {{
-@@ -1403,13 +1408,7 @@ impl AsyncStreamIntrinsic {
+@@ -868,6 +877,9 @@ impl AsyncStreamIntrinsic {
+                                 event.rejectedLength = rejectedLength;
+                             }}
+ 
++                            // The copy is complete and nothing looks its buffer up again, so the manager
++                            // releases it, with the values a host write copied into it.
++                            {global_buffer_manager}.deleteBuffer(componentIdx, bufferID);
+                             return event;
+                         }};
+ 
+@@ -1403,13 +1415,7 @@ impl AsyncStreamIntrinsic {
                                      // If the write was blocked, the pending event produced by the
                                      // read side represents the completed copy.
  
@@ -152,7 +434,7 @@ index 06890ab..618f42e 100644
  
                                      if (!this.hasPendingEvent()) {{
                                          throw new Error("missing pending event after blocked stream write");
-@@ -1531,13 +1530,7 @@ impl AsyncStreamIntrinsic {
+@@ -1531,13 +1537,7 @@ impl AsyncStreamIntrinsic {
                                      // If the read was blocked, the pending event produced by the
                                      // write side represents the completed copy.
  
@@ -167,7 +449,97 @@ index 06890ab..618f42e 100644
  
                                      if (!this.hasPendingEvent()) {{
                                          throw new Error("missing pending event after blocked stream read");
-@@ -2775,7 +2768,11 @@ impl AsyncStreamIntrinsic {
+@@ -1782,6 +1782,7 @@ impl AsyncStreamIntrinsic {
+                 let internal_stream_class_name = self.name();
+                 let read_end_class = render_args.require_intrinsic(Self::StreamReadableEndClass);
+                 let write_end_class = render_args.require_intrinsic(Self::StreamWritableEndClass);
++                let global_stream_map = render_args.require_intrinsic(Self::GlobalStreamMap);
+ 
+                 output.push_str(&format!(
+                     r#"
+@@ -1815,7 +1816,10 @@ impl AsyncStreamIntrinsic {
+                                 // from inside the guest.
+                                 hostInjectFn: args.hostInjectFn,
+                                 isPeerDroppedFn: () => this.#writeEnd?.isDropped() ?? false,
+-                                notifyPeerDroppedFn: () => this.#writeEnd?.notifyDropped(),
++                                notifyPeerDroppedFn: () => {{
++                                    this.#writeEnd?.notifyDropped();
++                                    this.#releaseWhenDropped();
++                                }},
+                             }});
+ 
+                             this.#writeEnd = new {write_end_class}({{
+@@ -1826,10 +1830,28 @@ impl AsyncStreamIntrinsic {
+                                 waitable: writeWaitable,
+                                 hostOwned: true,
+                                 isPeerDroppedFn: () => this.#readEnd.isDropped(),
+-                                notifyPeerDroppedFn: () => this.#readEnd.notifyDropped(),
++                                notifyPeerDroppedFn: () => {{
++                                    this.#readEnd.notifyDropped();
++                                    this.#releaseWhenDropped();
++                                }},
+                             }});
+                         }}
+ 
++                        // Once both ends are dropped nothing reaches the stream by its global rep,
++                        // so the global map releases it, with the values its ends last held. A
++                        // host-fed stream's writer is the host's own, which no guest handle drops:
++                        // once the reader is dropped (its drop hook has closed the host source) the
++                        // writer leaves the component's tables as a guest's drop would remove it.
++                        #releaseWhenDropped() {{
++                            if (this.#globalStreamMapRep === undefined) {{ return; }}
++                            if (!this.#readEnd?.isDropped()) {{ return; }}
++                            const hostFed = this.#readEnd.hasHostInject();
++                            if (!this.#writeEnd?.isDropped() && !hostFed) {{ return; }}
++                            if (hostFed && !this.#writeEnd.isCopying()) {{ this.#releaseHostWriterFn?.(); }}
++                            {global_stream_map}.remove(this.#globalStreamMapRep);
++                            this.#globalStreamMapRep = undefined;
++                        }}
++
+                         elemMeta() {{ return this.#elemMeta; }}
+ 
+                         globalStreamMapRep() {{ return this.#globalStreamMapRep; }}
+@@ -1841,6 +1863,10 @@ impl AsyncStreamIntrinsic {
+ 
+                         readEnd() {{ return this.#readEnd; }}
+                         writeEnd() {{ return this.#writeEnd; }}
++
++                        // Removes a host-fed stream's writer from the tables its component holds it in.
++                        #releaseHostWriterFn = null;
++                        setReleaseHostWriterFn(f) {{ this.#releaseHostWriterFn = f; }}
+                     }}
+                     "#
+                 ));
+@@ -1868,6 +1894,9 @@ impl AsyncStreamIntrinsic {
+                 );
+                 let runtime_error_class =
+                     render_args.require_intrinsic(Intrinsic::WebAssemblyRuntimeError);
++                let global_stream_table_map =
++                    render_args.require_intrinsic(Self::GlobalStreamTableMap);
++                let global_stream_map = render_args.require_intrinsic(Self::GlobalStreamMap);
+ 
+                 output.push_str(&format!(
+                     r#"
+@@ -1935,7 +1964,17 @@ impl AsyncStreamIntrinsic {
+                                 // The host may dispose while an already-completed read is
+                                 // between event publication and its polling continuation.
+                                 // Preserve that event for the in-flight host promise.
+-                                dropFn: () => streamEnd.drop({{ allowPendingEvent: true }}),
++                                // A host drop removes the end from the component's tables, as a
++                                // guest's drop does, and this lifted stream from the global map,
++                                // since the host can no longer pass it on; the in-flight read holds
++                                // the end itself.
++                                dropFn: () => {{
++                                    if (streamEnd.isDropped()) {{ return; }}
++                                    cstate.handles.remove(streamEnd.waitableIdx());
++                                    {global_stream_table_map}[this.#streamTableIdx].table.remove(streamEnd.handle());
++                                    {global_stream_map}.remove(this.#rep);
++                                    streamEnd.drop({{ allowPendingEvent: true }});
++                                }},
+                             }});
+                         }}
+                     }}
+@@ -2775,7 +2814,11 @@ impl AsyncStreamIntrinsic {
                                }}
                                drainPendingValues();
  
